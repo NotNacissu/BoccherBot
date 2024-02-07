@@ -1,62 +1,85 @@
-from typing import Final
+# the os module helps us access environment variables
+# i.e., our API keys
 import os
-from dotenv import load_dotenv
-from discord import Intents, Client, Message
-from responses import get_response
 
-# load token from somewhere
-load_dotenv()
-TOKEN: Final[str] = os.getenv("DISCORD_TOKEN")
+# these modules are for querying the Hugging Face model
+import json
+import requests
 
-# bot setup
-intents: Intents = Intents.default()
-intents.message_content = True #NOQA
-client: Client = Client(intents=intents)
+# the Discord Python API
+import discord
 
-# message functionality
-async def send_message(message: Message,user_message:str) -> None:
-    if not user_message:
-        print('(Message was empty because intents were probably not enabled')
-        return
+# this is my Hugging Face profile link
+API_URL = 'https://api-inference.huggingface.co/models/Nacissu/'
 
+class MyClient(discord.Client):
+    def __init__(self, model_name):
+        # adding intents module to prevent intents error in __init__ method in newer versions of Discord.py
+        intents = discord.Intents.default() # Select all the intents in your bot settings as it's easier
+        intents.message_content = True
+        super().__init__(intents=intents)
+        self.api_endpoint = API_URL + model_name
+        # retrieve the secret API token from the system environment
+        huggingface_token = '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' # CHANGE IF NEED NEW HUGGINGFACE TOKEN
+        # format the header in our request to Hugging Face
+        self.request_headers = {
+            'Authorization': 'Bearer {}'.format(huggingface_token)
+        }
 
-    if is_private := user_message[0] == '?': # if there's a question mark, it will message in dms.
-        user_message = user_message[1:]
+    def query(self, payload):
+        """
+        make request to the Hugging Face model API
+        """
+        data = json.dumps(payload)
+        response = requests.request('POST',
+                                    self.api_endpoint,
+                                    headers=self.request_headers,
+                                    data=data)
+        ret = json.loads(response.content.decode('utf-8'))
+        return ret
 
-    try:
-        response: str = get_response(user_message)
-        await message.author.send(response) if is_private else await message.channel.send(response)
-    except Exception as e:
-        print(e)
+    async def on_ready(self):
+        # print out information when the bot wakes up
+        print('Logged in as')
+        print(self.user.name)
+        print(self.user.id)
+        print('------')
+        # send a request to the model without caring about the response
+        # just so that the model wakes up and starts loading
+        self.query({'inputs': {'text': 'Hello!'}})
 
-# handling startup for bot
-@client.event
-async def on_ready() -> None:
-    print(f' {client} is now running')
+    async def on_message(self, message):
+        """
+        this function is called whenever the bot sees a message in a channel
+        """
+        # ignore the message if it comes from the bot itself
+        if message.author.id == self.user.id:
+            return
 
+        # form query payload with the content of the message
+        payload = {'inputs': {'text': message.content}}
 
-#handling incoming messages
-@client.event
-async def on_message(message: Message) -> None:
-    if message.author == client.user: # if bot wrote message, don't respond
-        return
+        # while the bot is waiting on a response from the model
+        # set the its status as typing for user-friendliness
+        async with message.channel.typing():
+          response = self.query(payload)
+        bot_response = response.get('generated_text', None)
 
-    username: str = str(message.author)
-    user_message: str = message.content
-    channel: str = str(message.channel)
+        # we may get ill-formed response if the model hasn't fully loaded
+        # or has timed out
+        if not bot_response:
+            if 'error' in response:
+                bot_response = '`Error: {}`'.format(response['error'])
+            else:
+                bot_response = 'Hmm... something is not right...'
 
-    print(f'[{channel}] {username}: "{user_message}"')
-    await send_message(message, user_message)
+        # send the model's response to the Discord channel
+        await message.channel.send(bot_response)
 
-
-# main entry point where code runs
-
-def main() -> None:
-    client.run(TOKEN)
+def main():
+    # DialoGPT-medium-joshua is my model name
+    client = MyClient('DiabloGPT-Large-Bocchers')
+    client.run('MTIwNDcyODAxMDE4ODUyNTYxMA.GugDDK.3Mz6veOCcfSHIj5o58doyMxMKZujvjrGAT4ly8') # CHANGE IF NEEDED 
 
 if __name__ == '__main__':
-    main()
-
-
-
-
+  main()
