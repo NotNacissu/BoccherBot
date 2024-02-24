@@ -1,0 +1,1 @@
+Unable to upload the model to github as it is to large. you can access it with https://huggingface.co/Nacissu/DiabloGPT-Large-Bocchers.
