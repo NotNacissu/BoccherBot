@@ -1,2 +1,2 @@
-# NacissuBot
-A chat bot for discord with basic functions
+# BoccherBot
+A discord chat bot that impersonates a fictional character that I like.
